@@ -17,6 +17,9 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      # configure-pages lit la configuration Pages du dépôt (GET /repos/.../pages).
+      # En lecture seule : l'activation du site relèverait de pages: write.
+      pages: read
     steps:
       - name: Checkout
         # Actions épinglées par empreinte de commit : un tag peut être redéplacé
