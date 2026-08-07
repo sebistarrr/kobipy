@@ -7,7 +7,7 @@ import './styles.css'
 
 const CHANNEL_URL = 'https://www.youtube.com/@kobipy'
 const TIPEEE_URL = 'https://fr.tipeee.com/kobipy/'
-const CONTACT_EMAIL = 'sebastientran23@gmail.com'
+const CONTACT_EMAIL = 'kobipy@contact.fr'
 
 const YOUTUBE_ID = /^[A-Za-z0-9_-]{11}$/
 
