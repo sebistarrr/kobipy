@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { createRoot } from 'react-dom/client'
-import { ChevronDown, Clock, ExternalLink, Heart, Mail, Menu, Play, Search, Send, Sparkles, Trash2, X } from 'lucide-react'
+import { CalendarDays, ChevronDown, ExternalLink, Heart, Mail, Menu, Play, Search, Send, Sparkles, X } from 'lucide-react'
+import latestPublished from 'virtual:derniere-video'
 import { LIMITS, buildMailtoUrl } from './contact.js'
 import './styles.css'
 
@@ -8,8 +9,6 @@ const CHANNEL_URL = 'https://www.youtube.com/@kobipy'
 const TIPEEE_URL = 'https://fr.tipeee.com/kobipy/'
 const CONTACT_EMAIL = 'sebastientran23@gmail.com'
 
-const HISTORY_KEY = 'kobipy:historique'
-const HISTORY_MAX = 5
 const YOUTUBE_ID = /^[A-Za-z0-9_-]{11}$/
 
 const videos = [
@@ -27,79 +26,49 @@ const faqs = [
   ['À qui s’adressent les vidéos KobiPy ?', 'Aux curieux, étudiants et passionnés qui veulent comprendre les mathématiques par l’intuition, les animations et la visualisation, sans renoncer à la rigueur.'],
   ['Quels outils sont utilisés pour créer les animations ?', 'Les animations sont principalement réalisées avec Python, notamment Manim et Pygame, ainsi qu’avec Blender pour certaines scènes.'],
   ['Puis-je utiliser les vidéos dans un cadre pédagogique ?', 'Vous pouvez partager les liens vers les vidéos. Pour toute reproduction ou intégration plus large, contactez directement KobiPy.'],
-  ['Le site conserve-t-il des données personnelles ?', 'Aucune donnée n’est envoyée à un serveur. La dernière vidéo visualisée est mémorisée uniquement dans votre navigateur et peut être effacée à tout moment depuis la section « Reprendre ».'],
   ['Comment soutenir la chaîne ?', 'Vous pouvez vous abonner, partager les vidéos ou contribuer directement via la page Tipeee de KobiPy.']
 ]
 
 const thumbnailUrl = id => `https://img.youtube.com/vi/${encodeURIComponent(id)}/hqdefault.jpg`
 const embedUrl = id => `https://www.youtube-nocookie.com/embed/${encodeURIComponent(id)}?autoplay=1&rel=0`
 
-// Le contenu de localStorage est modifiable par l'utilisateur ou par un script
-// tiers : on ne réutilise donc jamais les valeurs telles quelles, chaque entrée
-// est revalidée contre le catalogue avant d'être affichée.
-function readHistory(){
-  try{
-    const parsed = JSON.parse(window.localStorage.getItem(HISTORY_KEY) ?? '[]')
-    if(!Array.isArray(parsed)) return []
-    const entries = []
-    const seen = new Set()
-    for(const entry of parsed){
-      if(!entry || typeof entry !== 'object') continue
-      const { id, watchedAt } = entry
-      if(!videosById.has(id) || seen.has(id)) continue
-      if(!Number.isFinite(watchedAt) || watchedAt <= 0) continue
-      seen.add(id)
-      entries.push({ id, watchedAt })
-      if(entries.length === HISTORY_MAX) break
-    }
-    return entries
-  }catch{
-    return []
+const publishedFormat = new Intl.DateTimeFormat('fr-FR', { dateStyle: 'long' })
+
+const formatPublishedAt = value => {
+  const parsed = Date.parse(value ?? '')
+  return Number.isNaN(parsed) ? null : publishedFormat.format(parsed)
+}
+
+// La vidéo mise en avant vient du flux Atom de la chaîne, récupéré au build
+// (voir vite.config.js). Si la récupération a échoué, on retombe sur la
+// première entrée du catalogue, qui est classé du plus récent au plus ancien.
+// Le catalogue sert aussi à enrichir le flux, qui ne fournit ni description,
+// ni durée, ni thème.
+function resolveLatestVideo(){
+  const fallback = videos[0]
+  if(!latestPublished || !YOUTUBE_ID.test(latestPublished.id ?? '')) return fallback
+
+  const known = videosById.get(latestPublished.id)
+  return {
+    ...(known ?? { category: 'Nouveauté' }),
+    id: latestPublished.id,
+    title: latestPublished.title || known?.title || fallback.title,
+    publishedLabel: formatPublishedAt(latestPublished.publishedAt)
   }
 }
 
-const relative = new Intl.RelativeTimeFormat('fr', { numeric: 'auto' })
-
-function formatWatchedAt(timestamp){
-  // Borné à maintenant : un horodatage falsifié ne doit pas afficher « dans 3 jours ».
-  const elapsed = Math.min(timestamp, Date.now()) - Date.now()
-  const minutes = Math.round(elapsed / 60000)
-  if(Math.abs(minutes) < 60) return relative.format(minutes, 'minute')
-  const hours = Math.round(elapsed / 3600000)
-  if(Math.abs(hours) < 24) return relative.format(hours, 'hour')
-  return relative.format(Math.round(elapsed / 86400000), 'day')
-}
+const latestVideo = resolveLatestVideo()
 
 function App(){
   const [menu,setMenu]=useState(false), [category,setCategory]=useState('Toutes'), [query,setQuery]=useState(''), [openFaq,setOpenFaq]=useState(0), [activeVideo,setActiveVideo]=useState(null)
   const [contact,setContact]=useState({name:'',email:'',subject:'',message:''})
   const [contactError,setContactError]=useState('')
-  const [history,setHistory]=useState(readHistory)
 
   const categories=['Toutes',...new Set(videos.map(v=>v.category))]
   const filtered=useMemo(()=>videos.filter(v=>(category==='Toutes'||v.category===category)&&v.title.toLowerCase().includes(query.toLowerCase())),[category,query])
-  const watched=useMemo(()=>history.map(e=>({...videosById.get(e.id),watchedAt:e.watchedAt})),[history])
-  const lastWatched=watched[0]
-  const alsoWatched=watched.slice(1)
 
   const go=useCallback(id=>{document.getElementById(id)?.scrollIntoView({behavior:'smooth'});setMenu(false)},[])
-
-  const openVideo=useCallback(video=>{
-    setActiveVideo(video)
-    setHistory(previous=>[{id:video.id,watchedAt:Date.now()},...previous.filter(e=>e.id!==video.id)].slice(0,HISTORY_MAX))
-  },[])
-
-  const clearHistory=useCallback(()=>setHistory([]),[])
-
-  // Persistance best-effort : navigation privée, quota atteint ou stockage
-  // désactivé ne doivent jamais casser la page. Un historique vidé retire la clé
-  // au lieu d'y laisser un tableau vide.
-  useEffect(()=>{
-    try{
-      if(history.length) window.localStorage.setItem(HISTORY_KEY,JSON.stringify(history))
-      else window.localStorage.removeItem(HISTORY_KEY)
-    }catch{ /* historique simplement non persisté */ }
-  },[history])
+  const openVideo=useCallback(video=>setActiveVideo(video),[])
 
   // Fermeture au clavier et blocage du défilement de l'arrière-plan.
   useEffect(()=>{
@@ -117,7 +86,7 @@ function App(){
     if(url) window.location.href=url
   }
 
-  const navLinks=[['accueil','Accueil'],...(lastWatched?[['reprendre','Reprendre']]:[]),['videos','Vidéos'],['apropos','À propos'],['stats','Statistiques'],['contact','Contact'],['faq','FAQ']]
+  const navLinks=[['accueil','Accueil'],['nouveaute','Nouveauté'],['videos','Vidéos'],['apropos','À propos'],['stats','Statistiques'],['contact','Contact'],['faq','FAQ']]
 
   return <div>
     <header className="header"><div className="nav-wrap">
@@ -135,32 +104,25 @@ function App(){
 
       <section id="stats" className="stats">{[['10,6 k+','abonnés'],['26','vidéos'],['413 k+','vues cumulées'],['15,9 k','vues moyennes / vidéo']].map(([n,l])=><div key={l}><strong>{n}</strong><span>{l}</span></div>)}</section>
 
-      {lastWatched&&<section id="reprendre" className="resume"><div className="section resume-inner">
-        <div className="resume-head">
-          <div><span className="kicker">DERNIÈRE VIDÉO VISUALISÉE</span><h2>Reprendre où vous en étiez.</h2><p>Cet historique reste dans votre navigateur : rien n’est envoyé ni stocké en ligne.</p></div>
-          <button className="ghost-btn" onClick={clearHistory}><Trash2 size={16}/> Effacer l’historique</button>
+      <section id="nouveaute" className="latest"><div className="section latest-inner">
+        <div className="latest-head">
+          <div><span className="kicker">DERNIÈRE VIDÉO PUBLIÉE</span><h2>La nouveauté de la chaîne.</h2></div>
+          <a className="ghost-btn" href={CHANNEL_URL} target="_blank" rel="noopener noreferrer">Voir sur YouTube <ExternalLink size={15}/></a>
         </div>
-        <article className="resume-card">
-          <button className="thumb" onClick={()=>openVideo(lastWatched)} aria-label={`Revoir ${lastWatched.title}`}>
-            <img src={thumbnailUrl(lastWatched.id)} alt="" loading="lazy" referrerPolicy="no-referrer"/>
+        <article className="latest-card">
+          <button className="thumb" onClick={()=>openVideo(latestVideo)} aria-label={`Lire ${latestVideo.title}`}>
+            <img src={thumbnailUrl(latestVideo.id)} alt="" referrerPolicy="no-referrer"/>
             <span className="play"><Play fill="currentColor"/></span>
-            <small>{lastWatched.duration}</small>
+            {latestVideo.duration&&<small>{latestVideo.duration}</small>}
           </button>
-          <div className="resume-body">
-            <div className="meta"><Clock size={13}/> Vue {formatWatchedAt(lastWatched.watchedAt)} · {lastWatched.category}</div>
-            <h3>{lastWatched.title}</h3>
-            <p>{lastWatched.description}</p>
-            <button className="cyan-btn" onClick={()=>openVideo(lastWatched)}><Play size={17} fill="currentColor"/> Revoir la vidéo</button>
+          <div className="latest-body">
+            <div className="meta"><CalendarDays size={13}/> {latestVideo.publishedLabel?`Publiée le ${latestVideo.publishedLabel}`:'Dernière publication'} · {latestVideo.category}</div>
+            <h3>{latestVideo.title}</h3>
+            {latestVideo.description&&<p>{latestVideo.description}</p>}
+            <button className="cyan-btn" onClick={()=>openVideo(latestVideo)}><Play size={17} fill="currentColor"/> Regarder maintenant</button>
           </div>
         </article>
-        {alsoWatched.length>0&&<div className="resume-recent">
-          <small>Également vues récemment</small>
-          <div className="resume-recent-list">{alsoWatched.map(v=><button key={v.id} onClick={()=>openVideo(v)} title={v.title}>
-            <img src={thumbnailUrl(v.id)} alt="" loading="lazy" referrerPolicy="no-referrer"/>
-            <span>{v.title}</span>
-          </button>)}</div>
-        </div>}
-      </div></section>}
+      </div></section>
 
       <section id="videos" className="section videos"><div className="section-head"><div><span className="kicker">LA VIDÉOTHÈQUE</span><h2>Explorer les leçons</h2><p>Une bibliothèque de concepts expliqués par l’image, classés par thème.</p></div><label className="search"><Search size={18}/><input value={query} onChange={e=>setQuery(e.target.value)} maxLength={100} placeholder="Rechercher une vidéo"/></label></div>
         <div className="filters">{categories.map(c=><button className={c===category?'active':''} onClick={()=>setCategory(c)} key={c}>{c}</button>)}</div>

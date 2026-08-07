@@ -38,26 +38,42 @@ La configuration Vite détecte automatiquement le nom du dépôt pendant le buil
 ## Mettre à jour le contenu
 
 - Vidéos, FAQ et statistiques : `src/main.jsx`
+- Chaîne interrogée pour la section « Nouveauté » : `CHANNEL_HANDLE` dans `vite.config.js`
 - Couleurs et mise en page : `src/styles.css`
 - Titre et métadonnées : `index.html`
 - Liens YouTube, Tipeee et adresse de contact : constantes en haut de `src/main.jsx`
 - Origines externes autorisées (CSP) : `vite.config.js`
 
 Une vidéo ajoutée à la liste `videos` doit porter un identifiant YouTube valide
-(11 caractères) : les identifiants au mauvais format sont ignorés par
-l'historique de visionnage.
+(11 caractères) et la liste doit rester classée du plus récent au plus ancien :
+c'est elle qui sert de repli si le flux YouTube est injoignable au build.
 
-## Section « Dernière vidéo visualisée »
+## Section « Dernière vidéo publiée »
 
-La section `#reprendre` apparaît dès qu'une vidéo a été ouverte et met en avant
-la dernière visualisée, avec les précédentes en dessous (5 au maximum).
+La section `#nouveaute` met en avant la vidéo la plus récente de la chaîne.
 
-L'historique vit uniquement dans le `localStorage` du navigateur, sous la clé
-`kobipy:historique`, et ne contient que des identifiants de vidéos et des
-horodatages — aucune donnée personnelle, aucun envoi vers un serveur. Le bouton
-« Effacer l'historique » supprime la clé. Au chargement, chaque entrée est
-revalidée contre le catalogue : une valeur modifiée à la main dans le stockage
-est ignorée plutôt qu'affichée.
+Elle est alimentée **au moment du build**, pas dans le navigateur : le plugin
+`kobipy-derniere-video` de `vite.config.js` lit la page de la chaîne pour en
+extraire l'identifiant `UC…`, puis le flux Atom public
+`https://www.youtube.com/feeds/videos.xml?channel_id=…`. Ce flux ne demande
+aucune clé d'API — ce qui compte pour un site public où rien ne peut rester
+secret — et la lecture au build évite deux impasses : le flux n'envoie pas
+d'en-tête CORS, et la CSP du site interdit les appels réseau sortants.
+
+Si la récupération échoue (réseau coupé, YouTube indisponible, format du flux
+modifié), le build **n'échoue pas** : un avertissement est affiché dans le log
+et le site se rabat sur la première entrée du catalogue `videos` de
+`src/main.jsx`, classé du plus récent au plus ancien. Le flux ne fournissant ni
+description, ni durée, ni thème, ces champs sont repris du catalogue quand la
+vidéo y figure déjà.
+
+Comme la donnée est figée au build, une nouvelle vidéo n'apparaît qu'à la
+reconstruction suivante : le workflow tourne donc aussi une fois par jour
+(`schedule` dans `.github/workflows/deploy.yml`).
+
+Le découpage du flux est isolé dans `scripts/youtube-feed.js` et couvert par
+`tests/youtube-feed.test.js` : identifiants revalidés, entités XML décodées,
+flux vide ou tronqué traité sans exception.
 
 ## Choix de sécurité
 
@@ -69,6 +85,9 @@ est ignorée plutôt qu'affichée.
   `allow` réduit aux permissions réellement nécessaires.
 - **Liens externes** en `rel="noopener noreferrer"`, vignettes en
   `referrerPolicy="no-referrer"`.
+- **Dernière vidéo** lue au build depuis le flux Atom public, sans clé d'API ni
+  appel réseau depuis le navigateur ; identifiants de chaîne et de vidéo
+  revalidés avant de construire la moindre URL.
 - **Formulaire de contact** : aucune donnée n'est envoyée par le site, il prépare
   seulement un lien `mailto:`. La construction de ce lien est isolée dans
   `src/contact.js` et couverte par `tests/contact.test.js`, notamment contre

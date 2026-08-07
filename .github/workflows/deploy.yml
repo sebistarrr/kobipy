@@ -3,6 +3,12 @@ name: Deploy to GitHub Pages
 on:
   push:
     branches: [main]
+  # La dernière vidéo publiée est récupérée pendant le build : une reconstruction
+  # quotidienne suffit à faire apparaître une nouvelle vidéo sans toucher au code.
+  # GitHub suspend les workflows planifiés après 60 jours sans activité sur le
+  # dépôt ; il faut alors les réactiver depuis l'onglet Actions.
+  schedule:
+    - cron: '0 5 * * *'
   workflow_dispatch:
 
 # Aucun droit par défaut : chaque job demande explicitement ce dont il a besoin.
