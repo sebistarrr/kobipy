@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { feedUrl, parseChannelId, parseLatestVideo } from '../scripts/youtube-feed.js'
+import { feedUrl, parseChannelId, parseLatestVideo, parseVideos } from '../scripts/youtube-feed.js'
 
 // Extrait représentatif du flux Atom renvoyé par YouTube.
 const FEED = `<?xml version="1.0" encoding="UTF-8"?>
@@ -11,7 +11,15 @@ const FEED = `<?xml version="1.0" encoding="UTF-8"?>
     <yt:videoId>K3jf5BFsPiw</yt:videoId>
     <title>Limite &amp; intégrale : pourquoi &quot;permuter&quot; échoue</title>
     <published>2026-03-12T17:00:04+00:00</published>
-    <media:group><media:title>Limite &amp; intégrale</media:title></media:group>
+    <media:group>
+      <media:title>Limite &amp; intégrale</media:title>
+      <media:description>Une exploration visuelle.
+Avec un lien : https://exemple.fr</media:description>
+      <media:community>
+        <media:starRating count="1200" average="5.00" min="1" max="5"/>
+        <media:statistics views="19432"/>
+      </media:community>
+    </media:group>
   </entry>
   <entry>
     <id>yt:video:PCklKViZapo</id>
@@ -35,11 +43,40 @@ test('ne confond pas <title> et <media:title>', () => {
   assert.ok(!parseLatestVideo(FEED).title.endsWith('intégrale'))
 })
 
-test('rejette un identifiant de vidéo mal formé', () => {
+test('ignore une entrée dont l’identifiant est mal formé', () => {
   for(const bad of ['court', '../../evil', 'K3jf5BFsPiw!', '"><script>']){
     const xml = FEED.replace('<yt:videoId>K3jf5BFsPiw</yt:videoId>', `<yt:videoId>${bad}</yt:videoId>`)
-    assert.equal(parseLatestVideo(xml), null, `devrait rejeter : ${bad}`)
+    const videos = parseVideos(xml)
+    // L'entrée fautive disparaît, la suivante reste exploitable.
+    assert.deepEqual(videos.map(v => v.id), ['PCklKViZapo'], `devrait ignorer : ${bad}`)
   }
+})
+
+test('lit toutes les entrées du flux, dans l’ordre', () => {
+  assert.deepEqual(parseVideos(FEED).map(v => v.id), ['K3jf5BFsPiw', 'PCklKViZapo'])
+})
+
+test('extrait description et nombre de vues quand le flux les fournit', () => {
+  const [latest] = parseVideos(FEED)
+  assert.equal(latest.description, 'Une exploration visuelle.\nAvec un lien : https://exemple.fr')
+  assert.equal(latest.views, 19432)
+})
+
+test('description et vues valent respectivement "" et null si absentes du flux', () => {
+  const [, older] = parseVideos(FEED)
+  assert.equal(older.description, '')
+  assert.equal(older.views, null)
+})
+
+test('ignore un doublon d’identifiant', () => {
+  const doubled = FEED.replace('<yt:videoId>PCklKViZapo</yt:videoId>', '<yt:videoId>K3jf5BFsPiw</yt:videoId>')
+  assert.equal(parseVideos(doubled).length, 1)
+})
+
+test('renvoie un tableau vide sur un flux vide, tronqué ou absent', () => {
+  assert.deepEqual(parseVideos('<feed></feed>'), [])
+  assert.deepEqual(parseVideos(''), [])
+  assert.deepEqual(parseVideos(null), [])
 })
 
 test('renvoie null sur un flux vide, tronqué ou absent', () => {

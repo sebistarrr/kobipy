@@ -1,26 +1,20 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { CalendarDays, ChevronDown, ExternalLink, Heart, Mail, Menu, Play, Search, Send, Sparkles, X } from 'lucide-react'
-import latestPublished from 'virtual:derniere-video'
+import feedVideos from 'virtual:videos-youtube'
 import { LIMITS, buildMailtoUrl } from './contact.js'
+import { buildCatalogue } from './videos.js'
 import './styles.css'
 
 const CHANNEL_URL = 'https://www.youtube.com/@kobipy'
 const TIPEEE_URL = 'https://fr.tipeee.com/kobipy/'
 const CONTACT_EMAIL = 'kobipy@contact.fr'
 
-const YOUTUBE_ID = /^[A-Za-z0-9_-]{11}$/
-
-const videos = [
-  { id:'K3jf5BFsPiw', title:'Pourquoi ne peut-on pas permuter limite et intégrale ?', category:'Analyse', views:'19 k vues', duration:'9:48', date:'2025', description:'Une exploration visuelle des hypothèses cachées derrière le passage à la limite sous le signe intégral.' },
-  { id:'PCklKViZapo', title:"La continuité : un concept plus difficile qu'il n'y paraît", category:'Analyse', views:'20 k vues', duration:'11:25', date:'2025', description:"Comprendre intuitivement les différentes formes de continuité grâce à l'animation." },
-  { id:'K-JRFkrq7CA', title:'Comprendre les convergences simple et uniforme', category:'Analyse', views:'26 k vues', duration:'9:17', date:'2024', description:"Deux notions proches en apparence, mais profondément différentes lorsqu'on les visualise." },
-  { id:'Oigh-j52CqE', title:"La puissance de l'intégrale de Lebesgue", category:'Intégration', views:'81 k vues', duration:'16:41', date:'2024', description:"Pourquoi l'intégrale de Lebesgue dépasse-t-elle celle de Riemann ? Une réponse visuelle." },
-  { id:'U2xmox321_k', title:"Où est le cercle ? L'intégrale de Gauss", category:'Géométrie', views:'62 k vues', duration:'6:32', date:'2023', description:"Un cercle invisible apparaît au cœur d'une intégrale célèbre." },
-  { id:'37tG_qvBb3M', title:'La fonction de Weierstrass est un monstre mathématique', category:'Fonctions', views:'48 k vues', duration:'5:31', date:'2023', description:'Une fonction continue partout et dérivable nulle part, révélée image par image.' }
-]
-
-const videosById = new Map(videos.filter(v => YOUTUBE_ID.test(v.id)).map(v => [v.id, v]))
+// La vidéothèque est construite au build à partir du flux Atom de la chaîne
+// (voir vite.config.js), enrichie des métadonnées éditoriales de videos.js. Si
+// le flux était injoignable, c'est le catalogue éditorial qui est servi tel quel.
+const videos = buildCatalogue(feedVideos)
+const latestVideo = videos[0]
 
 const faqs = [
   ['À qui s’adressent les vidéos KobiPy ?', 'Aux curieux, étudiants et passionnés qui veulent comprendre les mathématiques par l’intuition, les animations et la visualisation, sans renoncer à la rigueur.'],
@@ -38,26 +32,6 @@ const formatPublishedAt = value => {
   const parsed = Date.parse(value ?? '')
   return Number.isNaN(parsed) ? null : publishedFormat.format(parsed)
 }
-
-// La vidéo mise en avant vient du flux Atom de la chaîne, récupéré au build
-// (voir vite.config.js). Si la récupération a échoué, on retombe sur la
-// première entrée du catalogue, qui est classé du plus récent au plus ancien.
-// Le catalogue sert aussi à enrichir le flux, qui ne fournit ni description,
-// ni durée, ni thème.
-function resolveLatestVideo(){
-  const fallback = videos[0]
-  if(!latestPublished || !YOUTUBE_ID.test(latestPublished.id ?? '')) return fallback
-
-  const known = videosById.get(latestPublished.id)
-  return {
-    ...(known ?? { category: 'Nouveauté' }),
-    id: latestPublished.id,
-    title: latestPublished.title || known?.title || fallback.title,
-    publishedLabel: formatPublishedAt(latestPublished.publishedAt)
-  }
-}
-
-const latestVideo = resolveLatestVideo()
 
 function App(){
   const [menu,setMenu]=useState(false), [category,setCategory]=useState('Toutes'), [query,setQuery]=useState(''), [openFaq,setOpenFaq]=useState(0), [activeVideo,setActiveVideo]=useState(null)
@@ -116,7 +90,7 @@ function App(){
             {latestVideo.duration&&<small>{latestVideo.duration}</small>}
           </button>
           <div className="latest-body">
-            <div className="meta"><CalendarDays size={13}/> {latestVideo.publishedLabel?`Publiée le ${latestVideo.publishedLabel}`:'Dernière publication'} · {latestVideo.category}</div>
+            <div className="meta"><CalendarDays size={13}/> {formatPublishedAt(latestVideo.publishedAt)?`Publiée le ${formatPublishedAt(latestVideo.publishedAt)}`:'Dernière publication'} · {latestVideo.category}</div>
             <h3>{latestVideo.title}</h3>
             {latestVideo.description&&<p>{latestVideo.description}</p>}
             <button className="cyan-btn" onClick={()=>openVideo(latestVideo)}><Play size={17} fill="currentColor"/> Regarder maintenant</button>
@@ -126,7 +100,7 @@ function App(){
 
       <section id="videos" className="section videos"><div className="section-head"><div><span className="kicker">LA VIDÉOTHÈQUE</span><h2>Explorer les leçons</h2><p>Une bibliothèque de concepts expliqués par l’image, classés par thème.</p></div><label className="search"><Search size={18}/><input value={query} onChange={e=>setQuery(e.target.value)} maxLength={100} placeholder="Rechercher une vidéo"/></label></div>
         <div className="filters">{categories.map(c=><button className={c===category?'active':''} onClick={()=>setCategory(c)} key={c}>{c}</button>)}</div>
-        <div className="video-grid">{filtered.map(v=><article className="video-card" key={v.id}><button className="thumb" onClick={()=>openVideo(v)} aria-label={`Lire ${v.title}`}><img src={thumbnailUrl(v.id)} alt="" loading="lazy" referrerPolicy="no-referrer"/><span className="play"><Play fill="currentColor"/></span><small>{v.duration}</small></button><div className="video-body"><div className="meta">{v.category} · {v.date}</div><h3>{v.title}</h3><p>{v.description}</p><footer><span>{v.views}</span><ExternalLink size={17}/></footer></div></article>)}</div>
+        <div className="video-grid">{filtered.map(v=><article className="video-card" key={v.id}><button className="thumb" onClick={()=>openVideo(v)} aria-label={`Lire ${v.title}`}><img src={thumbnailUrl(v.id)} alt="" loading="lazy" referrerPolicy="no-referrer"/><span className="play"><Play fill="currentColor"/></span>{v.duration&&<small>{v.duration}</small>}</button><div className="video-body"><div className="meta">{v.category} · {v.date}</div><h3>{v.title}</h3>{v.description&&<p>{v.description}</p>}<footer><span>{v.views??''}</span><ExternalLink size={17}/></footer></div></article>)}</div>
         <div className="center"><a className="outline-dark" href={`${CHANNEL_URL}/videos`} target="_blank" rel="noopener noreferrer">Toutes les vidéos sur YouTube <ExternalLink size={16}/></a></div>
       </section>
 

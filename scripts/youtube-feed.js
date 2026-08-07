@@ -26,22 +26,45 @@ export function parseChannelId(html){
   return found && CHANNEL_ID.test(found[1]) ? found[1] : null
 }
 
-/**
- * Renvoie la vidéo la plus récente du flux, ou null si le flux est vide ou
- * illisible. Le format est revalidé : une réponse inattendue ne doit jamais
- * produire une URL d'embed fantaisiste.
- */
-export function parseLatestVideo(xml){
-  const entry = String(xml ?? '').match(/<entry>([\s\S]*?)<\/entry>/)?.[1]
-  if(!entry) return null
-
+// Une entrée dont l'identifiant est absent ou mal formé est ignorée plutôt que
+// de faire échouer toute la lecture : elle ne doit jamais atteindre la
+// construction d'une URL.
+function parseEntry(entry){
   const id = entry.match(/<yt:videoId>\s*([^<\s]+)\s*<\/yt:videoId>/)?.[1]
   const title = entry.match(/<title>([\s\S]*?)<\/title>/)?.[1]
-  const published = entry.match(/<published>\s*([^<\s]+)\s*<\/published>/)?.[1]
   if(!id || !YOUTUBE_ID.test(id) || !title?.trim()) return null
 
-  const publishedAt = published && !Number.isNaN(Date.parse(published)) ? published : null
-  return { id, title: decodeXml(title).trim(), publishedAt }
+  const published = entry.match(/<published>\s*([^<\s]+)\s*<\/published>/)?.[1]
+  const description = entry.match(/<media:description>([\s\S]*?)<\/media:description>/)?.[1]
+  const views = entry.match(/<media:statistics\b[^>]*\bviews="(\d+)"/)?.[1]
+
+  return {
+    id,
+    title: decodeXml(title).trim(),
+    description: description ? decodeXml(description).trim() : '',
+    publishedAt: published && !Number.isNaN(Date.parse(published)) ? published : null,
+    views: views !== undefined && Number.isSafeInteger(Number(views)) ? Number(views) : null
+  }
 }
+
+/**
+ * Renvoie toutes les vidéos du flux, de la plus récente à la plus ancienne
+ * (YouTube en publie une quinzaine). Un flux vide, tronqué ou illisible donne
+ * un tableau vide plutôt qu'une exception.
+ */
+export function parseVideos(xml){
+  const videos = []
+  const seen = new Set()
+  for(const [, entry] of String(xml ?? '').matchAll(/<entry>([\s\S]*?)<\/entry>/g)){
+    const video = parseEntry(entry)
+    if(!video || seen.has(video.id)) continue
+    seen.add(video.id)
+    videos.push(video)
+  }
+  return videos
+}
+
+/** Vidéo la plus récente du flux, ou null. */
+export const parseLatestVideo = xml => parseVideos(xml)[0] ?? null
 
 export const feedUrl = channelId => `https://www.youtube.com/feeds/videos.xml?channel_id=${channelId}`

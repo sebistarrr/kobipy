@@ -37,43 +37,70 @@ La configuration Vite détecte automatiquement le nom du dépôt pendant le buil
 
 ## Mettre à jour le contenu
 
-- Vidéos, FAQ et statistiques : `src/main.jsx`
-- Chaîne interrogée pour la section « Nouveauté » : `CHANNEL_HANDLE` dans `vite.config.js`
+- Thèmes, durées et textes soignés des vidéos : `CURATED` dans `src/videos.js`
+- FAQ et statistiques : `src/main.jsx`
+- Chaîne interrogée : `CHANNEL_HANDLE` dans `vite.config.js`
 - Couleurs et mise en page : `src/styles.css`
 - Titre et métadonnées : `index.html`
 - Liens YouTube, Tipeee et adresse de contact : constantes en haut de `src/main.jsx`
 - Origines externes autorisées (CSP) : `vite.config.js`
 
-Une vidéo ajoutée à la liste `videos` doit porter un identifiant YouTube valide
-(11 caractères) et la liste doit rester classée du plus récent au plus ancien :
-c'est elle qui sert de repli si le flux YouTube est injoignable au build.
+Une nouvelle vidéo publiée sur la chaîne apparaît toute seule, sans toucher au
+code. Lui ajouter une entrée dans `CURATED` sert seulement à lui donner un
+thème, une durée et des textes rédigés — voir la section suivante.
 
-## Section « Dernière vidéo publiée »
+## Vidéothèque alimentée par la chaîne
 
-La section `#nouveaute` met en avant la vidéo la plus récente de la chaîne.
+La vidéothèque et la section `#nouveaute` sont construites **au moment du
+build**, pas dans le navigateur : le plugin `kobipy-videos-youtube` de
+`vite.config.js` lit la page de la chaîne pour en extraire l'identifiant `UC…`,
+puis le flux Atom public
+`https://www.youtube.com/feeds/videos.xml?channel_id=…`, qui publie la
+quinzaine de vidéos les plus récentes.
 
-Elle est alimentée **au moment du build**, pas dans le navigateur : le plugin
-`kobipy-derniere-video` de `vite.config.js` lit la page de la chaîne pour en
-extraire l'identifiant `UC…`, puis le flux Atom public
-`https://www.youtube.com/feeds/videos.xml?channel_id=…`. Ce flux ne demande
-aucune clé d'API — ce qui compte pour un site public où rien ne peut rester
-secret — et la lecture au build évite deux impasses : le flux n'envoie pas
-d'en-tête CORS, et la CSP du site interdit les appels réseau sortants.
+Ce flux ne demande aucune clé d'API — ce qui compte pour un site public où rien
+ne peut rester secret — et la lecture au build évite deux impasses : le flux
+n'envoie pas d'en-tête CORS, et la CSP du site interdit les appels réseau
+sortants.
+
+### Ce qui vient d'où
+
+| Donnée | Source |
+|---|---|
+| Identifiant, titre, description, date de publication | flux YouTube |
+| Nombre de vues | flux YouTube quand il le fournit, sinon `CURATED` |
+| Thème et durée | `CURATED` uniquement — absents du flux |
+| Statistiques de la page d'accueil | saisies à la main dans `src/main.jsx` |
+
+Les titres et descriptions YouTube sont écrits pour l'algorithme (majuscules,
+hashtags, numéros d'épisode, chapitres). La version de `CURATED` prime donc
+quand elle existe ; le flux prend le relais pour les vidéos non répertoriées,
+dont la description est réduite à sa première ligne utile. Une vidéo sans thème
+éditorial est rangée sous `DEFAULT_CATEGORY`, et son bandeau de durée est
+simplement omis.
+
+### Repli et fraîcheur
 
 Si la récupération échoue (réseau coupé, YouTube indisponible, format du flux
 modifié), le build **n'échoue pas** : un avertissement est affiché dans le log
-et le site se rabat sur la première entrée du catalogue `videos` de
-`src/main.jsx`, classé du plus récent au plus ancien. Le flux ne fournissant ni
-description, ni durée, ni thème, ces champs sont repris du catalogue quand la
-vidéo y figure déjà.
+et le site sert `CURATED` tel quel.
 
-Comme la donnée est figée au build, une nouvelle vidéo n'apparaît qu'à la
+La donnée étant figée au build, une nouvelle vidéo n'apparaît qu'à la
 reconstruction suivante : le workflow tourne donc aussi une fois par jour
 (`schedule` dans `.github/workflows/deploy.yml`).
 
-Le découpage du flux est isolé dans `scripts/youtube-feed.js` et couvert par
-`tests/youtube-feed.test.js` : identifiants revalidés, entités XML décodées,
-flux vide ou tronqué traité sans exception.
+### Construire contre un flux enregistré
+
+Pour travailler sans réseau, ou pour vérifier le rendu d'une vidéo non
+répertoriée :
+
+```bash
+KOBIPY_FEED_FIXTURE=chemin/vers/flux.xml npm run build
+```
+
+Le découpage du flux vit dans `scripts/youtube-feed.js`, la fusion avec les
+métadonnées éditoriales dans `src/videos.js` ; les deux sont couverts par
+`tests/`.
 
 ## Choix de sécurité
 
@@ -85,9 +112,9 @@ flux vide ou tronqué traité sans exception.
   `allow` réduit aux permissions réellement nécessaires.
 - **Liens externes** en `rel="noopener noreferrer"`, vignettes en
   `referrerPolicy="no-referrer"`.
-- **Dernière vidéo** lue au build depuis le flux Atom public, sans clé d'API ni
-  appel réseau depuis le navigateur ; identifiants de chaîne et de vidéo
-  revalidés avant de construire la moindre URL.
+- **Vidéos** lues au build depuis le flux Atom public, sans clé d'API ni appel
+  réseau depuis le navigateur ; identifiants de chaîne et de vidéo revalidés
+  avant de construire la moindre URL, entrée ignorée si le format surprend.
 - **Formulaire de contact** : aucune donnée n'est envoyée par le site, il prépare
   seulement un lien `mailto:`. La construction de ce lien est isolée dans
   `src/contact.js` et couverte par `tests/contact.test.js`, notamment contre
@@ -100,4 +127,11 @@ flux vide ou tronqué traité sans exception.
 
 ## Remarque sur les statistiques
 
-Les statistiques sont actuellement indicatives et renseignées dans le code. Une actualisation automatique nécessite un service externe ou une API, car une clé privée ne doit pas être placée dans un site GitHub Pages public.
+Les statistiques de la page d'accueil (abonnés, vues cumulées) restent saisies à
+la main : le flux Atom ne porte aucune donnée au niveau de la chaîne, et il ne
+publie que les quinze dernières vidéos, dont on ne peut pas déduire un total.
+
+Les rendre automatiques demande l'API YouTube Data v3, donc une clé. Elle n'a
+pas à être exposée pour autant : comme les données sont lues au build, la clé
+peut vivre dans **Settings → Secrets and variables → Actions** et ne jamais
+atteindre le navigateur — seuls les chiffres obtenus finissent dans le bundle.

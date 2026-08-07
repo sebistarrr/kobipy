@@ -1,9 +1,10 @@
+import { readFile } from 'node:fs/promises'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
-import { CHANNEL_ID, feedUrl, parseChannelId, parseLatestVideo } from './scripts/youtube-feed.js'
+import { CHANNEL_ID, feedUrl, parseChannelId, parseVideos } from './scripts/youtube-feed.js'
 
 const CHANNEL_HANDLE = '@kobipy'
-const VIRTUAL_MODULE = 'virtual:derniere-video'
+const VIRTUAL_MODULE = 'virtual:videos-youtube'
 const RESOLVED_MODULE = '\0' + VIRTUAL_MODULE
 const FETCH_TIMEOUT_MS = 10_000
 
@@ -53,45 +54,61 @@ async function fetchText(url){
 }
 
 /**
- * Récupère la dernière vidéo publiée sur la chaîne, ou null.
+ * Récupère les vidéos de la chaîne, de la plus récente à la plus ancienne, ou
+ * un tableau vide.
  *
  * Le flux Atom de YouTube est public : aucune clé d'API n'est nécessaire, ce
  * qui compte pour un site GitHub Pages où rien n'est secret. L'appel a lieu au
  * build ; un échec (réseau coupé, YouTube indisponible, format modifié) est
- * seulement signalé, et le site se rabat sur le catalogue de src/main.jsx.
+ * seulement signalé, et le site se rabat sur le catalogue éditorial de
+ * src/videos.js.
  */
-async function fetchLatestVideo(){
+async function fetchChannelVideos(){
   try{
+    // Permet de construire le site contre un flux enregistré, sans réseau :
+    // KOBIPY_FEED_FIXTURE=flux.xml npm run build
+    const fixture = process.env.KOBIPY_FEED_FIXTURE
+    if(fixture){
+      const videos = parseVideos(await readFile(fixture, 'utf8'))
+      console.log(`[kobipy] flux local ${fixture} : ${videos.length} vidéos`)
+      return videos
+    }
+
     const channelId = parseChannelId(await fetchText(`https://www.youtube.com/${CHANNEL_HANDLE}`))
     if(!channelId) throw new Error(`identifiant de chaîne introuvable pour ${CHANNEL_HANDLE}`)
     if(!CHANNEL_ID.test(channelId)) throw new Error('identifiant de chaîne au format inattendu')
 
-    const latest = parseLatestVideo(await fetchText(feedUrl(channelId)))
-    if(!latest) throw new Error('flux Atom illisible ou vide')
+    const videos = parseVideos(await fetchText(feedUrl(channelId)))
+    if(videos.length === 0) throw new Error('flux Atom illisible ou vide')
 
-    console.log(`[kobipy] dernière vidéo publiée : « ${latest.title} » (${latest.id}, ${latest.publishedAt ?? 'date inconnue'})`)
-    return latest
+    const withViews = videos.filter(video => video.views !== null).length
+    console.log(`[kobipy] ${videos.length} vidéos récupérées depuis le flux de la chaîne`)
+    console.log(`[kobipy] vues fournies par le flux : ${withViews}/${videos.length} — descriptions : ${videos.filter(v => v.description).length}/${videos.length}`)
+    for(const video of videos){
+      console.log(`[kobipy]   ${video.publishedAt?.slice(0, 10) ?? '??????????'}  ${video.id}  ${video.views ?? '—'}  ${video.title}`)
+    }
+    return videos
   }catch(error){
-    console.warn(`[kobipy] récupération de la dernière vidéo impossible (${error.message}) — repli sur le catalogue`)
-    return null
+    console.warn(`[kobipy] récupération des vidéos impossible (${error.message}) — repli sur le catalogue éditorial`)
+    return []
   }
 }
 
-function latestVideoPlugin(){
+function youtubeVideosPlugin(){
   let pending
   return {
-    name: 'kobipy-derniere-video',
+    name: 'kobipy-videos-youtube',
     resolveId: id => (id === VIRTUAL_MODULE ? RESOLVED_MODULE : null),
     async load(id){
       if(id !== RESOLVED_MODULE) return null
-      pending ??= fetchLatestVideo()
+      pending ??= fetchChannelVideos()
       return `export default ${JSON.stringify(await pending)}`
     }
   }
 }
 
 export default defineConfig({
-  plugins: [react(), latestVideoPlugin(), cspPlugin()],
+  plugins: [react(), youtubeVideosPlugin(), cspPlugin()],
   // Fonctionne automatiquement pour un dépôt projet ou <utilisateur>.github.io.
   base: process.env.GITHUB_ACTIONS ? `/${process.env.GITHUB_REPOSITORY?.split('/')[1] || ''}/` : '/',
 })
