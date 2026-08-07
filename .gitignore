@@ -1,0 +1,16 @@
+node_modules/
+dist/
+dist-ssr/
+
+# Variables d'environnement : ne jamais committer de secret.
+.env
+.env.*
+!.env.example
+
+*.local
+*.log
+npm-debug.log*
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
+.idea/
