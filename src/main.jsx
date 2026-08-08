@@ -73,7 +73,7 @@ function App(){
     if(url) window.location.href=url
   }
 
-  const navLinks=[['accueil','Accueil'],['nouveaute','Nouveauté'],['videos','Vidéos'],['stats','Statistiques'],['apropos','À propos'],['faq','FAQ'],['contact','Contact']]
+  const navLinks=[['accueil','Accueil'],['stats','Statistiques'],['nouveaute','Nouveauté'],['videos','Vidéos'],['apropos','À propos'],['faq','FAQ'],['contact','Contact']]
 
   return <div>
     <header className="header"><div className="nav-wrap">
@@ -88,6 +88,8 @@ function App(){
         <div><div className="eyebrow"><Sparkles size={15}/> Mathématiques & informatique visuelles</div><h1>Voir les mathématiques <em>autrement.</em></h1><p>Des idées complexes rendues intuitives par l’animation, la géométrie et le code. Découvrez les mathématiques comme un paysage à explorer.</p><div className="hero-actions"><button className="cyan-btn" onClick={()=>go('videos')}><Play size={17} fill="currentColor"/> Voir les vidéos</button><button className="outline-btn" onClick={()=>go('apropos')}>Découvrir KobiPy</button></div></div>
         <div className="math-card"><div className="grid-lines"></div><svg viewBox="0 0 600 500"><defs><linearGradient id="curve"><stop stopColor="#dfab5d"/><stop offset="1" stopColor="#3dc7ca"/></linearGradient></defs><path d="M35 350 C115 350 140 140 220 140 C300 140 310 410 400 410 C475 410 500 220 575 220" fill="none" stroke="url(#curve)" strokeWidth="8" strokeLinecap="round"/><circle cx="220" cy="140" r="9" fill="#dfab5d"/><circle cx="400" cy="410" r="11" fill="#3dc7ca"/></svg><div className="math-caption"><small>VISUALISER POUR COMPRENDRE</small><strong>Analyse • Géométrie • Informatique</strong></div></div>
       </div></section>
+
+      <section id="stats" className="stats">{[['10,6 k+','abonnés'],['26','vidéos'],['413 k+','vues cumulées'],['15,9 k','vues moyennes / vidéo']].map(([n,l])=><div key={l}><strong>{n}</strong><span>{l}</span></div>)}</section>
 
       <section id="nouveaute" className="latest"><div className="section latest-inner">
         <div className="latest-head">
@@ -117,8 +119,6 @@ function App(){
           <a className="outline-dark" href={`${CHANNEL_URL}/videos`} target="_blank" rel="noopener noreferrer">Toutes les vidéos sur YouTube <ExternalLink size={16}/></a>
         </div>
       </section>
-
-      <section id="stats" className="stats">{[['10,6 k+','abonnés'],['26','vidéos'],['413 k+','vues cumulées'],['15,9 k','vues moyennes / vidéo']].map(([n,l])=><div key={l}><strong>{n}</strong><span>{l}</span></div>)}</section>
 
       <section id="apropos" className="about"><div className="section about-grid"><div className="quote"><span>π</span><blockquote>« L’intuition n’est pas l’opposé de la rigueur. Elle en est souvent la porte d’entrée. »</blockquote><small>— L’approche KobiPy</small></div><div><span className="kicker">À PROPOS DE LA CHAÎNE</span><h2>Donner une forme aux idées abstraites.</h2><p className="lead">KobiPy est une chaîne dédiée aux mathématiques et à l’informatique, avec un accent particulier sur l’animation et la visualisation.</p><p>Les vidéos mêlent vulgarisation, divertissement et notions du supérieur. Python, Manim, Pygame et Blender deviennent ici des instruments pour rendre visibles les mécanismes cachés derrière les formules.</p><div className="principles">{[['01','Comprendre'],['02','Visualiser'],['03','Approfondir'],['04','Partager']].map(([n,t])=><div key={n}><small>{n}</small><strong>{t}</strong></div>)}</div></div></div></section>
 
