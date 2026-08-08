@@ -128,8 +128,19 @@ et le site sert `CURATED` tel quel — les entrées de `EDITORIAL` assez complè
 pour tenir debout sans le flux.
 
 La donnée étant figée au build, une nouvelle vidéo n'apparaît qu'à la
-reconstruction suivante : le workflow tourne donc aussi une fois par jour
-(`schedule` dans `.github/workflows/deploy.yml`).
+reconstruction suivante : le workflow tourne donc aussi **toutes les heures**
+(`schedule` dans `.github/workflows/deploy.yml`), pour environ 96 unités de
+quota par jour sur les 10 000 disponibles.
+
+Le temps réel n'est pas atteignable sans renoncer au secret de la clé : il
+faudrait appeler l'API depuis le navigateur, donc l'y exposer — ce que la CSP
+interdit par ailleurs. Pour publier sans attendre l'heure suivante, lancer le
+workflow à la main depuis l'onglet Actions (`workflow_dispatch`).
+
+Une reconstruction ne rend jamais le site indisponible : la version en ligne
+reste servie jusqu'à ce que la nouvelle soit entièrement publiée, et un build en
+échec laisse simplement la version précédente en place puisque le job `deploy`
+dépend du job `build`.
 
 ### Construire contre des données enregistrées
 

@@ -3,20 +3,26 @@ name: Deploy to GitHub Pages
 on:
   push:
     branches: [main]
-  # La dernière vidéo publiée est récupérée pendant le build : une reconstruction
-  # quotidienne suffit à faire apparaître une nouvelle vidéo sans toucher au code.
+  # Les données YouTube sont figées au build : sans reconstruction périodique,
+  # une nouvelle vidéo n'apparaîtrait qu'au prochain push. Toutes les heures,
+  # à la minute 17 plutôt qu'à l'heure pile, où GitHub retarde le plus les
+  # tâches planifiées. Coût : environ 96 unités de quota par jour sur 10 000.
   # GitHub suspend les workflows planifiés après 60 jours sans activité sur le
   # dépôt ; il faut alors les réactiver depuis l'onglet Actions.
   schedule:
-    - cron: '0 5 * * *'
+    - cron: '17 * * * *'
   workflow_dispatch:
 
 # Aucun droit par défaut : chaque job demande explicitement ce dont il a besoin.
 permissions: {}
 
+# Une seule publication à la fois. On n'interrompt jamais celle qui est en
+# cours : c'est une mise en production, et l'annuler en plein vol laisserait le
+# site sur sa version précédente sans qu'aucun run n'aboutisse. Les exécutions
+# en attente sont simplement remplacées par la plus récente.
 concurrency:
   group: pages
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   build:
