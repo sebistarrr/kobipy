@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { CalendarDays, ChevronDown, ExternalLink, Heart, Mail, Menu, Play, Search, Send, Sparkles, X } from 'lucide-react'
-import feedVideos from 'virtual:videos-youtube'
+import channelData from 'virtual:videos-youtube'
 import { LIMITS, buildMailtoUrl } from './contact.js'
+import { buildStats } from './stats.js'
 import { buildCatalogue } from './videos.js'
 import './styles.css'
 
@@ -15,11 +16,13 @@ const CHANNEL_URL = 'https://www.youtube.com/@kobipy'
 const TIPEEE_URL = 'https://fr.tipeee.com/kobipy/'
 const CONTACT_EMAIL = 'contact@kobipy.fr'
 
-// La vidéothèque est construite au build à partir du flux Atom de la chaîne
-// (voir vite.config.js), enrichie des métadonnées éditoriales de videos.js. Si
-// le flux était injoignable, c'est le catalogue éditorial qui est servi tel quel.
-const videos = buildCatalogue(feedVideos)
+// Vidéos et statistiques sont récupérées au build (voir vite.config.js), puis
+// enrichies des métadonnées éditoriales. Sans clé d'API, les statistiques
+// gardent leurs valeurs de repli ; sans réseau, c'est tout le catalogue
+// éditorial qui est servi.
+const videos = buildCatalogue(channelData?.videos)
 const latestVideo = videos[0]
+const stats = buildStats(channelData?.channel)
 
 const faqs = [
   ['À qui s’adressent les vidéos KobiPy ?', 'Aux curieux, étudiants et passionnés qui veulent comprendre les mathématiques par l’intuition, les animations et la visualisation, sans renoncer à la rigueur.'],
@@ -89,7 +92,7 @@ function App(){
         <div className="math-card"><div className="grid-lines"></div><svg viewBox="0 0 600 500"><defs><linearGradient id="curve"><stop stopColor="#dfab5d"/><stop offset="1" stopColor="#3dc7ca"/></linearGradient></defs><path d="M35 350 C115 350 140 140 220 140 C300 140 310 410 400 410 C475 410 500 220 575 220" fill="none" stroke="url(#curve)" strokeWidth="8" strokeLinecap="round"/><circle cx="220" cy="140" r="9" fill="#dfab5d"/><circle cx="400" cy="410" r="11" fill="#3dc7ca"/></svg><div className="math-caption"><small>VISUALISER POUR COMPRENDRE</small><strong>Analyse • Géométrie • Informatique</strong></div></div>
       </div></section>
 
-      <section id="stats" className="stats">{[['10,6 k+','abonnés'],['26','vidéos'],['413 k+','vues cumulées'],['15,9 k','vues moyennes / vidéo']].map(([n,l])=><div key={l}><strong>{n}</strong><span>{l}</span></div>)}</section>
+      <section id="stats" className="stats">{stats.map(([n,l])=><div key={l}><strong>{n}</strong><span>{l}</span></div>)}</section>
 
       <section id="nouveaute" className="latest"><div className="section latest-inner">
         <div className="latest-head">

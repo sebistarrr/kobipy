@@ -38,7 +38,8 @@ La configuration Vite détecte automatiquement le nom du dépôt pendant le buil
 ## Mettre à jour le contenu
 
 - Thèmes, durées et textes soignés des vidéos : `EDITORIAL` dans `src/videos.js`
-- FAQ et statistiques : `src/main.jsx`
+- Statistiques de repli : `FALLBACK_STATS` dans `src/stats.js`
+- FAQ : `src/main.jsx`
 - Chaîne interrogée : `CHANNEL_HANDLE` dans `vite.config.js`
 - Couleurs et mise en page : `src/styles.css`
 - Titre et métadonnées : `index.html`
@@ -49,32 +50,56 @@ Une nouvelle vidéo publiée sur la chaîne apparaît toute seule, sans toucher 
 code. Lui ajouter une entrée dans `EDITORIAL` sert seulement à lui donner un
 thème, une durée et des textes rédigés — voir la section suivante.
 
-## Vidéothèque alimentée par la chaîne
+## Vidéothèque et statistiques alimentées par la chaîne
 
-La vidéothèque et la section `#nouveaute` sont construites **au moment du
-build**, pas dans le navigateur : le plugin `kobipy-videos-youtube` de
-`vite.config.js` lit la page de la chaîne pour en extraire l'identifiant `UC…`,
-puis le flux Atom public
-`https://www.youtube.com/feeds/videos.xml?channel_id=…`, qui publie la
-quinzaine de vidéos les plus récentes.
+Tout est récupéré **au moment du build**, jamais dans le navigateur : le flux
+YouTube n'envoie pas d'en-tête CORS, et la CSP du site interdit de toute façon
+les appels réseau sortants. Le plugin `kobipy-videos-youtube` de
+`vite.config.js` s'en charge, avec trois niveaux qui se relaient sans jamais
+faire échouer le build.
 
-Ce flux ne demande aucune clé d'API — ce qui compte pour un site public où rien
-ne peut rester secret — et la lecture au build évite deux impasses : le flux
-n'envoie pas d'en-tête CORS, et la CSP du site interdit les appels réseau
-sortants.
+| Source | Condition | Ce qu'on obtient |
+|---|---|---|
+| API YouTube Data v3 | `YOUTUBE_API_KEY` présente | catalogue complet, durées, vues, statistiques de chaîne |
+| Flux Atom public | pas de clé, ou API en échec | quinze dernières vidéos, vues, sans durée ni statistiques |
+| Catalogue éditorial | réseau indisponible | `CURATED` de `src/videos.js` |
+
+### Mettre la clé en place
+
+1. Console Google Cloud : créer un projet, activer **YouTube Data API v3**,
+   générer une clé.
+2. La restreindre à cette seule API. **Pas** de restriction par référent ni par
+   adresse IP : l'appel part d'un runner GitHub dont l'adresse change à chaque
+   exécution.
+3. La déposer dans **Settings → Secrets and variables → Actions**, sous le nom
+   `YOUTUBE_API_KEY`.
+
+Rien d'autre à faire : le workflow la transmet déjà au build, et le site bascule
+tout seul à la reconstruction suivante.
+
+La clé ne quitte jamais le runner. Elle sert à appeler l'API pendant le build, et
+seuls les chiffres obtenus entrent dans le bundle — c'est ce qui permet de
+l'utiliser sur un site public sans jamais l'exposer. Elle ne doit pour autant
+jamais être committée, dépôt privé ou non : `.gitignore` couvre déjà `.env*`
+pour le développement local.
+
+Le coût en quota est négligeable : trois appels par build (la chaîne, la playlist
+des mises en ligne, le détail des vidéos par lots de 50), soit moins de dix
+unités sur les 10 000 quotidiennes.
 
 ### Ce qui vient d'où
 
 | Donnée | Source |
 |---|---|
-| Identifiant, titre, date de publication | flux YouTube |
-| Nombre de vues | flux YouTube quand il le fournit, sinon `EDITORIAL` |
-| Description | `EDITORIAL` quand elle existe, sinon le flux |
-| Thème et durée | `EDITORIAL` uniquement — absents du flux |
-| Statistiques de la page d'accueil | saisies à la main dans `src/main.jsx` |
+| Identifiant, titre, date de publication | YouTube |
+| Nombre de vues | YouTube, sinon `EDITORIAL` |
+| Durée | API uniquement ; sans clé, `EDITORIAL` prend le relais |
+| Description | `EDITORIAL` quand elle existe, sinon YouTube |
+| Thème | `EDITORIAL` uniquement — YouTube n'expose pas cette notion |
+| Statistiques de la page d'accueil | API uniquement ; sans clé, `FALLBACK_STATS` |
 
 **Le titre affiché est toujours celui de YouTube**, pour que le site et la chaîne
-concordent : le titre de `EDITORIAL` ne sert que de repli si le flux est
+concordent : le titre de `EDITORIAL` ne sert que de repli si YouTube est
 injoignable.
 
 La description suit la règle inverse : celle du flux contient chapitres, liens
@@ -106,18 +131,24 @@ La donnée étant figée au build, une nouvelle vidéo n'apparaît qu'à la
 reconstruction suivante : le workflow tourne donc aussi une fois par jour
 (`schedule` dans `.github/workflows/deploy.yml`).
 
-### Construire contre un flux enregistré
+### Construire contre des données enregistrées
 
-Pour travailler sans réseau, ou pour vérifier le rendu d'une vidéo non
-répertoriée :
+Pour travailler sans réseau ni clé, ou pour vérifier le rendu d'un cas
+particulier :
 
 ```bash
-KOBIPY_FEED_FIXTURE=chemin/vers/flux.xml npm run build
+KOBIPY_FEED_FIXTURE=chemin/vers/flux.xml npm run build   # flux Atom
+KOBIPY_API_FIXTURE=chemin/vers/reponses.json npm run build   # réponses d'API
 ```
 
-Le découpage du flux vit dans `scripts/youtube-feed.js`, la fusion avec les
-métadonnées éditoriales dans `src/videos.js` ; les deux sont couverts par
-`tests/`.
+Le fichier de réponses d'API regroupe les trois appels, sous les clés
+`channels`, `playlistItems` et `videos` ; un tableau y simule des appels
+successifs, ce qui permet d'exercer la pagination.
+
+La lecture du flux vit dans `scripts/youtube-feed.js`, celle de l'API dans
+`scripts/youtube-api.js`, la fusion avec les métadonnées éditoriales dans
+`src/videos.js` et la bande de chiffres dans `src/stats.js` ; tous sont couverts
+par `tests/`.
 
 ## Choix de sécurité
 
@@ -129,9 +160,10 @@ métadonnées éditoriales dans `src/videos.js` ; les deux sont couverts par
   `allow` réduit aux permissions réellement nécessaires.
 - **Liens externes** en `rel="noopener noreferrer"`, vignettes en
   `referrerPolicy="no-referrer"`.
-- **Vidéos** lues au build depuis le flux Atom public, sans clé d'API ni appel
-  réseau depuis le navigateur ; identifiants de chaîne et de vidéo revalidés
-  avant de construire la moindre URL, entrée ignorée si le format surprend.
+- **Vidéos et statistiques** lues au build, jamais depuis le navigateur. La clé
+  d'API vit dans les secrets GitHub, sert pendant le build et n'entre pas dans le
+  bundle. Identifiants de chaîne et de vidéo revalidés avant de construire la
+  moindre URL, entrée ignorée si le format surprend.
 - **Formulaire de contact** : aucune donnée n'est envoyée par le site, il prépare
   seulement un lien `mailto:`. La construction de ce lien est isolée dans
   `src/contact.js` et couverte par `tests/contact.test.js`, notamment contre
@@ -144,11 +176,10 @@ métadonnées éditoriales dans `src/videos.js` ; les deux sont couverts par
 
 ## Remarque sur les statistiques
 
-Les statistiques de la page d'accueil (abonnés, vues cumulées) restent saisies à
-la main : le flux Atom ne porte aucune donnée au niveau de la chaîne, et il ne
-publie que les quinze dernières vidéos, dont on ne peut pas déduire un total.
+Sans clé d'API, la bande de chiffres de la page d'accueil garde les valeurs
+indicatives de `FALLBACK_STATS` (`src/stats.js`) : le flux Atom ne porte aucune
+donnée au niveau de la chaîne. Avec une clé, abonnés, nombre de vidéos et vues
+cumulées deviennent réels, et la moyenne est calculée.
 
-Les rendre automatiques demande l'API YouTube Data v3, donc une clé. Elle n'a
-pas à être exposée pour autant : comme les données sont lues au build, la clé
-peut vivre dans **Settings → Secrets and variables → Actions** et ne jamais
-atteindre le navigateur — seuls les chiffres obtenus finissent dans le bundle.
+Chaque chiffre retombe individuellement sur sa valeur de repli s'il manque —
+une chaîne qui masque son nombre d'abonnés garde donc une bande complète.

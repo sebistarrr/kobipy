@@ -60,15 +60,27 @@ export function summarize(description){
   return `${(lastSpace > DESCRIPTION_MAX / 2 ? cut.slice(0, lastSpace) : cut).trimEnd()}…`
 }
 
-/** Met en forme un nombre de vues à la française : 19 k vues, 1,2 M vues. */
+/**
+ * Abrège un nombre à la française : 842, 1,5 k, 19 k, 1,3 M. null si invalide.
+ *
+ * `decimalBelow` fixe jusqu'où garder une décimale. Les vues des cartes s'en
+ * tiennent à 10 — « 19 k vues » suffit — tandis que la bande de statistiques
+ * monte à 100 pour distinguer 10,6 k de 11 k, ce qu'un arrondi à l'entier
+ * effacerait en surestimant.
+ */
+export function compactNumber(count, { decimalBelow = 10 } = {}){
+  if(!Number.isFinite(count) || count < 0) return null
+  if(count < 1000) return String(Math.round(count))
+
+  const [value, suffix] = count < 1e6 ? [count / 1000, 'k'] : [count / 1e6, 'M']
+  const text = value < decimalBelow ? value.toFixed(1) : value.toFixed(0)
+  return `${text.replace(/\.0$/, '').replace('.', ',')} ${suffix}`
+}
+
+/** Met en forme un nombre de vues : 19 k vues, 1,3 M vues. */
 export function formatViews(views){
-  if(!Number.isFinite(views) || views < 0) return null
-  if(views < 1000) return `${views} vues`
-  if(views < 1e6){
-    const thousands = views / 1000
-    return `${thousands.toFixed(thousands < 10 ? 1 : 0).replace('.', ',')} k vues`
-  }
-  return `${(views / 1e6).toFixed(1).replace('.', ',')} M vues`
+  const compact = compactNumber(views)
+  return compact === null ? null : `${compact} vues`
 }
 
 const publicationYear = publishedAt => {
@@ -96,7 +108,9 @@ export function buildCatalogue(feedVideos){
       title: video.title || curated?.title,
       description: curated?.description || summarize(video.description),
       category: curated?.category ?? DEFAULT_CATEGORY,
-      duration: curated?.duration ?? null,
+      // La durée n'existe qu'avec l'API ; le flux Atom ne la porte pas et
+      // laisse alors la valeur éditoriale prendre le relais.
+      duration: video.duration ?? curated?.duration ?? null,
       views: formatViews(video.views) ?? curated?.views ?? null,
       date: publicationYear(video.publishedAt) ?? curated?.date ?? '',
       publishedAt: video.publishedAt

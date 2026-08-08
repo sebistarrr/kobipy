@@ -50,6 +50,11 @@ jobs:
       - name: Test
         run: npm test
       - name: Build
+        env:
+          # La clé sert uniquement pendant le build : seuls les chiffres obtenus
+          # entrent dans le bundle, jamais la clé. Tant que le secret n'existe
+          # pas, la variable est vide et le site lit le flux Atom public.
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
         run: npm run build
       - name: Setup Pages
         uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5

@@ -1,12 +1,15 @@
 import { readFile } from 'node:fs/promises'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
-import { CHANNEL_ID, feedUrl, parseChannelId, parseVideos } from './scripts/youtube-feed.js'
+import { CHANNEL_ID, feedUrl, parseChannelId, parseVideos as parseFeedVideos } from './scripts/youtube-feed.js'
+import { apiUrl, parseChannel, parsePlaylistItems, parseVideos as parseApiVideos } from './scripts/youtube-api.js'
 
 const CHANNEL_HANDLE = '@kobipy'
 const VIRTUAL_MODULE = 'virtual:videos-youtube'
 const RESOLVED_MODULE = '\0' + VIRTUAL_MODULE
 const FETCH_TIMEOUT_MS = 10_000
+const API_PAGE_SIZE = 50
+const API_MAX_PAGES = 20   // garde-fou : 1 000 vidéos, très au-delà du besoin
 
 // Origines réellement utilisées par le site. Toute ressource hors de cette liste
 // est bloquée par le navigateur.
@@ -53,44 +56,148 @@ async function fetchText(url){
   return response.text()
 }
 
+// Permet de construire contre des réponses d'API enregistrées, sans clé ni
+// réseau : KOBIPY_API_FIXTURE=reponses.json npm run build
+let apiFixture
+async function loadApiFixture(){
+  const path = process.env.KOBIPY_API_FIXTURE
+  if(!path) return null
+  apiFixture ??= JSON.parse(await readFile(path, 'utf8'))
+  return apiFixture
+}
+
+async function fetchJson(url){
+  const fixture = await loadApiFixture()
+  if(fixture){
+    const endpoint = new URL(url).pathname.split('/').pop()
+    const queued = fixture[endpoint]
+    // Un tableau simule des appels successifs (pagination), un objet une
+    // réponse unique.
+    const response = Array.isArray(queued) ? queued.shift() : queued
+    if(!response) throw new Error(`aucune réponse enregistrée pour ${endpoint}`)
+    return response
+  }
+
+  const text = await fetchText(url)
+  try{ return JSON.parse(text) }
+  catch{ throw new Error('réponse JSON illisible') }
+}
+
+/** Identifiant UC… de la chaîne, extrait de sa page publique. */
+async function resolveChannelId(){
+  const channelId = parseChannelId(await fetchText(`https://www.youtube.com/${CHANNEL_HANDLE}`))
+  if(!channelId || !CHANNEL_ID.test(channelId)) throw new Error(`identifiant de chaîne introuvable pour ${CHANNEL_HANDLE}`)
+  return channelId
+}
+
 /**
- * Récupère les vidéos de la chaîne, de la plus récente à la plus ancienne, ou
- * un tableau vide.
+ * Catalogue complet via l'API YouTube Data v3.
  *
- * Le flux Atom de YouTube est public : aucune clé d'API n'est nécessaire, ce
- * qui compte pour un site GitHub Pages où rien n'est secret. L'appel a lieu au
- * build ; un échec (réseau coupé, YouTube indisponible, format modifié) est
- * seulement signalé, et le site se rabat sur le catalogue éditorial de
- * src/videos.js.
+ * Trois appels suffisent pour une chaîne de cette taille : la chaîne, la
+ * playlist de ses mises en ligne, puis le détail des vidéos par lots de 50 —
+ * soit moins de dix unités de quota sur les 10 000 quotidiennes.
+ *
+ * La clé ne sort jamais du runner : elle sert ici, et seuls les résultats
+ * entrent dans le bundle.
  */
-async function fetchChannelVideos(){
+async function fetchFromApi(apiKey, channelId){
+  const channel = parseChannel(await fetchJson(apiUrl('channels', {
+    part: 'contentDetails,statistics', id: channelId, key: apiKey
+  })))
+  if(!channel) throw new Error('chaîne absente de la réponse channels.list')
+  if(!channel.uploadsPlaylistId) throw new Error('playlist des mises en ligne introuvable')
+
+  const ids = []
+  let pageToken = null
+  for(let page = 0; page < API_MAX_PAGES; page++){
+    const listed = parsePlaylistItems(await fetchJson(apiUrl('playlistItems', {
+      part: 'contentDetails', playlistId: channel.uploadsPlaylistId,
+      maxResults: API_PAGE_SIZE, pageToken, key: apiKey
+    })))
+    ids.push(...listed.ids)
+    pageToken = listed.nextPageToken
+    if(!pageToken) break
+  }
+  if(ids.length === 0) throw new Error('aucune vidéo dans la playlist des mises en ligne')
+
+  const videos = []
+  for(let i = 0; i < ids.length; i += API_PAGE_SIZE){
+    videos.push(...parseApiVideos(await fetchJson(apiUrl('videos', {
+      part: 'snippet,contentDetails,statistics',
+      id: ids.slice(i, i + API_PAGE_SIZE).join(','), key: apiKey
+    }))))
+  }
+  if(videos.length === 0) throw new Error('aucune vidéo exploitable dans videos.list')
+
+  return { videos, channel }
+}
+
+/** Repli sans clé : le flux Atom public, limité aux quinze dernières vidéos. */
+async function fetchFromFeed(channelId){
+  const videos = parseFeedVideos(await fetchText(feedUrl(channelId)))
+  if(videos.length === 0) throw new Error('flux Atom illisible ou vide')
+  return { videos, channel: null }
+}
+
+function describe({ videos, channel }, source){
+  console.log(`[kobipy] ${videos.length} vidéos récupérées (${source})`)
+  if(channel){
+    console.log(`[kobipy] chaîne : ${channel.subscribers ?? '—'} abonnés, ${channel.videoCount ?? '—'} vidéos, ${channel.totalViews ?? '—'} vues cumulées`)
+  }
+  const withDuration = videos.filter(v => v.duration).length
+  console.log(`[kobipy] durées : ${withDuration}/${videos.length} — vues : ${videos.filter(v => v.views !== null).length}/${videos.length}`)
+  for(const video of videos){
+    console.log(`[kobipy]   ${video.publishedAt?.slice(0, 10) ?? '??????????'}  ${video.id}  ${String(video.duration ?? '—').padStart(7)}  ${video.views ?? '—'}  ${video.title}`)
+  }
+}
+
+/**
+ * Récupère vidéos et statistiques, en dégradant sans jamais faire échouer le
+ * build : API si une clé est fournie, sinon flux Atom public, et en dernier
+ * ressort le catalogue éditorial de src/videos.js.
+ */
+async function fetchChannelData(){
+  const fixture = process.env.KOBIPY_FEED_FIXTURE
+  if(fixture){
+    const videos = parseFeedVideos(await readFile(fixture, 'utf8'))
+    console.log(`[kobipy] flux local ${fixture} : ${videos.length} vidéos`)
+    return { videos, channel: null }
+  }
+
+  if(process.env.KOBIPY_API_FIXTURE){
+    const data = await fetchFromApi('clé-simulée', (await loadApiFixture()).channelId ?? 'UCsimulee00000000000000')
+    describe(data, `réponses enregistrées ${process.env.KOBIPY_API_FIXTURE}`)
+    return data
+  }
+
+  const apiKey = process.env.YOUTUBE_API_KEY?.trim()
+  let channelId
   try{
-    // Permet de construire le site contre un flux enregistré, sans réseau :
-    // KOBIPY_FEED_FIXTURE=flux.xml npm run build
-    const fixture = process.env.KOBIPY_FEED_FIXTURE
-    if(fixture){
-      const videos = parseVideos(await readFile(fixture, 'utf8'))
-      console.log(`[kobipy] flux local ${fixture} : ${videos.length} vidéos`)
-      return videos
-    }
-
-    const channelId = parseChannelId(await fetchText(`https://www.youtube.com/${CHANNEL_HANDLE}`))
-    if(!channelId) throw new Error(`identifiant de chaîne introuvable pour ${CHANNEL_HANDLE}`)
-    if(!CHANNEL_ID.test(channelId)) throw new Error('identifiant de chaîne au format inattendu')
-
-    const videos = parseVideos(await fetchText(feedUrl(channelId)))
-    if(videos.length === 0) throw new Error('flux Atom illisible ou vide')
-
-    const withViews = videos.filter(video => video.views !== null).length
-    console.log(`[kobipy] ${videos.length} vidéos récupérées depuis le flux de la chaîne`)
-    console.log(`[kobipy] vues fournies par le flux : ${withViews}/${videos.length} — descriptions : ${videos.filter(v => v.description).length}/${videos.length}`)
-    for(const video of videos){
-      console.log(`[kobipy]   ${video.publishedAt?.slice(0, 10) ?? '??????????'}  ${video.id}  ${video.views ?? '—'}  ${video.title}`)
-    }
-    return videos
+    channelId = await resolveChannelId()
   }catch(error){
-    console.warn(`[kobipy] récupération des vidéos impossible (${error.message}) — repli sur le catalogue éditorial`)
-    return []
+    console.warn(`[kobipy] chaîne introuvable (${error.message}) — repli sur le catalogue éditorial`)
+    return { videos: [], channel: null }
+  }
+
+  if(apiKey){
+    try{
+      const data = await fetchFromApi(apiKey, channelId)
+      describe(data, 'API YouTube Data v3')
+      return data
+    }catch(error){
+      console.warn(`[kobipy] API indisponible (${error.message}) — repli sur le flux Atom`)
+    }
+  }else{
+    console.log('[kobipy] pas de clé YOUTUBE_API_KEY : lecture du flux Atom public')
+  }
+
+  try{
+    const data = await fetchFromFeed(channelId)
+    describe(data, 'flux Atom public')
+    return data
+  }catch(error){
+    console.warn(`[kobipy] récupération impossible (${error.message}) — repli sur le catalogue éditorial`)
+    return { videos: [], channel: null }
   }
 }
 
@@ -101,7 +208,7 @@ function youtubeVideosPlugin(){
     resolveId: id => (id === VIRTUAL_MODULE ? RESOLVED_MODULE : null),
     async load(id){
       if(id !== RESOLVED_MODULE) return null
-      pending ??= fetchChannelVideos()
+      pending ??= fetchChannelData()
       return `export default ${JSON.stringify(await pending)}`
     }
   }
