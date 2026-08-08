@@ -79,10 +79,10 @@ const publicationYear = publishedAt => {
 /**
  * Fusionne le flux et les métadonnées éditoriales.
  *
- * Les titres et descriptions YouTube sont écrits pour l'algorithme — majuscules,
- * hashtags, numéros d'épisode — et jurent avec la typographie du site. La
- * version éditoriale prime donc quand elle existe ; le flux prend le relais pour
- * les vidéos non répertoriées, qui apparaissent ainsi sans toucher au code.
+ * Le titre affiché est celui de YouTube, pour que le site et la chaîne
+ * concordent : le titre éditorial ne sert que de repli si le flux est
+ * injoignable. La description, elle, reste éditoriale quand elle existe — celle
+ * du flux contient chapitres, liens et crédits.
  *
  * Un flux vide ou illisible renvoie le catalogue éditorial tel quel.
  */
@@ -93,7 +93,7 @@ export function buildCatalogue(feedVideos){
     const curated = editorialById.get(video.id)
     return {
       id: video.id,
-      title: curated?.title || video.title,
+      title: video.title || curated?.title,
       description: curated?.description || summarize(video.description),
       category: curated?.category ?? DEFAULT_CATEGORY,
       duration: curated?.duration ?? null,

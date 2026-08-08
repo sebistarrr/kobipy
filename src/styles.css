@@ -12,3 +12,6 @@ body.modal-open{overflow:hidden}.latest{background:#eef6f4;border-bottom:1px sol
 
 /* Les cartes n'ont pas toutes une description ni une durée : le pied reste aligné. */
 .video-card{display:flex;flex-direction:column}.video-body{flex:1;display:flex;flex-direction:column}.video-body footer{margin-top:auto}
+
+/* Vidéothèque paginée : « Afficher plus » à côté du lien vers la chaîne. */
+.videos-actions{display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:14px;margin-top:40px}.videos-actions .outline-dark{margin-top:0}.more-btn{display:inline-flex;align-items:center;gap:8px;border:1px solid #132033;border-radius:999px;background:#132033;color:#fff;padding:12px 22px;font-weight:600}.more-btn:hover{background:#1e3149;border-color:#1e3149}

@@ -6,6 +6,11 @@ import { LIMITS, buildMailtoUrl } from './contact.js'
 import { buildCatalogue } from './videos.js'
 import './styles.css'
 
+// La vidéothèque s'ouvre sur une seule rangée ; « Afficher plus » en révèle deux
+// de plus à chaque fois.
+const VIDEOS_INITIAL = 3
+const VIDEOS_STEP = 6
+
 const CHANNEL_URL = 'https://www.youtube.com/@kobipy'
 const TIPEEE_URL = 'https://fr.tipeee.com/kobipy/'
 const CONTACT_EMAIL = 'contact@kobipy.fr'
@@ -37,9 +42,17 @@ function App(){
   const [menu,setMenu]=useState(false), [category,setCategory]=useState('Toutes'), [query,setQuery]=useState(''), [openFaq,setOpenFaq]=useState(0), [activeVideo,setActiveVideo]=useState(null)
   const [contact,setContact]=useState({name:'',email:'',subject:'',message:''})
   const [contactError,setContactError]=useState('')
+  const [visibleVideos,setVisibleVideos]=useState(VIDEOS_INITIAL)
 
   const categories=['Toutes',...new Set(videos.map(v=>v.category))]
   const filtered=useMemo(()=>videos.filter(v=>(category==='Toutes'||v.category===category)&&v.title.toLowerCase().includes(query.toLowerCase())),[category,query])
+
+  const shown=filtered.slice(0,visibleVideos)
+  const remaining=filtered.length-shown.length
+
+  // Changer de thème ou de recherche repart d'une rangée : sans cela, un
+  // filtre appliqué après un dépliage afficherait un nombre arbitraire de cartes.
+  useEffect(()=>{setVisibleVideos(VIDEOS_INITIAL)},[category,query])
 
   const go=useCallback(id=>{document.getElementById(id)?.scrollIntoView({behavior:'smooth'});setMenu(false)},[])
   const openVideo=useCallback(video=>setActiveVideo(video),[])
@@ -98,8 +111,11 @@ function App(){
 
       <section id="videos" className="section videos"><div className="section-head"><div><span className="kicker">LA VIDÉOTHÈQUE</span><h2>Explorer les leçons</h2><p>Une bibliothèque de concepts expliqués par l’image, classés par thème.</p></div><label className="search"><Search size={18}/><input value={query} onChange={e=>setQuery(e.target.value)} maxLength={100} placeholder="Rechercher une vidéo"/></label></div>
         <div className="filters">{categories.map(c=><button className={c===category?'active':''} onClick={()=>setCategory(c)} key={c}>{c}</button>)}</div>
-        <div className="video-grid">{filtered.map(v=><article className="video-card" key={v.id}><button className="thumb" onClick={()=>openVideo(v)} aria-label={`Lire ${v.title}`}><img src={thumbnailUrl(v.id)} alt="" loading="lazy" referrerPolicy="no-referrer"/><span className="play"><Play fill="currentColor"/></span>{v.duration&&<small>{v.duration}</small>}</button><div className="video-body"><div className="meta">{v.category} · {v.date}</div><h3>{v.title}</h3>{v.description&&<p>{v.description}</p>}<footer><span>{v.views??''}</span><ExternalLink size={17}/></footer></div></article>)}</div>
-        <div className="center"><a className="outline-dark" href={`${CHANNEL_URL}/videos`} target="_blank" rel="noopener noreferrer">Toutes les vidéos sur YouTube <ExternalLink size={16}/></a></div>
+        <div className="video-grid">{shown.map(v=><article className="video-card" key={v.id}><button className="thumb" onClick={()=>openVideo(v)} aria-label={`Lire ${v.title}`}><img src={thumbnailUrl(v.id)} alt="" loading="lazy" referrerPolicy="no-referrer"/><span className="play"><Play fill="currentColor"/></span>{v.duration&&<small>{v.duration}</small>}</button><div className="video-body"><div className="meta">{v.category} · {v.date}</div><h3>{v.title}</h3>{v.description&&<p>{v.description}</p>}<footer><span>{v.views??''}</span><ExternalLink size={17}/></footer></div></article>)}</div>
+        <div className="videos-actions">
+          {remaining>0&&<button className="more-btn" onClick={()=>setVisibleVideos(n=>n+VIDEOS_STEP)}>Afficher plus de vidéos <ChevronDown size={17}/></button>}
+          <a className="outline-dark" href={`${CHANNEL_URL}/videos`} target="_blank" rel="noopener noreferrer">Toutes les vidéos sur YouTube <ExternalLink size={16}/></a>
+        </div>
       </section>
 
       <section id="stats" className="stats">{[['10,6 k+','abonnés'],['26','vidéos'],['413 k+','vues cumulées'],['15,9 k','vues moyennes / vidéo']].map(([n,l])=><div key={l}><strong>{n}</strong><span>{l}</span></div>)}</section>

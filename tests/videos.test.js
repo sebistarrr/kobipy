@@ -18,11 +18,18 @@ test('un flux vide, absent ou invalide renvoie le catalogue éditorial', () => {
   assert.equal(buildCatalogue('pas un tableau'), CURATED)
 })
 
-test('le titre éditorial prime sur le titre YouTube pour une vidéo répertoriée', () => {
+test('le titre affiché est celui de YouTube, même pour une vidéo répertoriée', () => {
   const [video] = buildCatalogue([feedEntry()])
-  assert.equal(video.title, 'Pourquoi ne peut-on pas permuter limite et intégrale ?')
+  assert.equal(video.title, 'Mais POURQUOI ne peut-on pas permuter LIMITE et INTÉGRALE ?! - Episode 3 #SoME4')
+  // Le reste des métadonnées éditoriales continue de s'appliquer.
   assert.equal(video.category, 'Analyse')
   assert.equal(video.duration, '9:48')
+  assert.match(video.description, /^Une exploration visuelle/)
+})
+
+test('le titre éditorial ne sert que de repli si le flux n’en fournit pas', () => {
+  const [video] = buildCatalogue([feedEntry({ title: '' })])
+  assert.equal(video.title, 'Pourquoi ne peut-on pas permuter limite et intégrale ?')
 })
 
 test('une vidéo inconnue du catalogue est reprise du flux', () => {

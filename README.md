@@ -67,22 +67,33 @@ sortants.
 
 | Donnée | Source |
 |---|---|
-| Identifiant, titre, description, date de publication | flux YouTube |
-| Nombre de vues | flux YouTube quand il le fournit, sinon `CURATED` |
+| Identifiant, titre, date de publication | flux YouTube |
+| Nombre de vues | flux YouTube quand il le fournit, sinon `EDITORIAL` |
+| Description | `EDITORIAL` quand elle existe, sinon le flux |
 | Thème et durée | `EDITORIAL` uniquement — absents du flux |
 | Statistiques de la page d'accueil | saisies à la main dans `src/main.jsx` |
 
-Les titres et descriptions YouTube sont écrits pour l'algorithme (majuscules,
-hashtags, numéros d'épisode, chapitres). La version de `EDITORIAL` prime donc
-quand elle existe ; le flux prend le relais pour les vidéos non répertoriées,
-dont la description est réduite à sa première ligne utile. Une vidéo sans thème
+**Le titre affiché est toujours celui de YouTube**, pour que le site et la chaîne
+concordent : le titre de `EDITORIAL` ne sert que de repli si le flux est
+injoignable.
+
+La description suit la règle inverse : celle du flux contient chapitres, liens
+et crédits sur des dizaines de lignes, donc la version de `EDITORIAL` prime, et
+à défaut le flux est réduit à sa première ligne utile. Une vidéo sans thème
 éditorial est rangée sous `DEFAULT_CATEGORY`, et son bandeau de durée est
 simplement omis.
 
 Chaque champ de `EDITORIAL` est facultatif. Une entrée réduite à `{ category }`
-range la vidéo sous un thème en laissant le flux fournir titre, description,
-vues et date — c'est le cas des vidéos dont les textes n'ont pas été retravaillés.
-Les entrées complètes alimentent en plus le catalogue de repli `CURATED`.
+range la vidéo sous un thème en laissant le flux fournir tout le reste — c'est le
+cas des vidéos dont les textes n'ont pas été retravaillés. Les entrées complètes
+alimentent en plus le catalogue de repli `CURATED`.
+
+### Pagination
+
+La grille s'ouvre sur `VIDEOS_INITIAL` vidéos (une rangée) et « Afficher plus de
+vidéos » en révèle `VIDEOS_STEP` de plus à chaque clic ; les deux constantes sont
+en haut de `src/main.jsx`. Changer de thème ou lancer une recherche repart d'une
+rangée, et le bouton disparaît dès qu'il ne reste rien à révéler.
 
 ### Repli et fraîcheur
 
