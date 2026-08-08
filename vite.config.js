@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { CHANNEL_ID, feedUrl, parseChannelId, parseVideos as parseFeedVideos } from './scripts/youtube-feed.js'
-import { apiUrl, parseChannel, parsePlaylistItems, parseVideos as parseApiVideos } from './scripts/youtube-api.js'
+import { apiUrl, describeHttpError, parseChannel, parsePlaylistItems, parseVideos as parseApiVideos } from './scripts/youtube-api.js'
 
 const CHANNEL_HANDLE = '@kobipy'
 const VIRTUAL_MODULE = 'virtual:videos-youtube'
@@ -52,7 +52,11 @@ async function fetchText(url){
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     headers: { 'accept-language': 'fr,en;q=0.8' }
   })
-  if(!response.ok) throw new Error(`HTTP ${response.status}`)
+  if(!response.ok){
+    // Le corps porte le motif exact de l'erreur. On ne journalise jamais l'URL,
+    // qui contiendrait la clé, et describeHttpError masque toute clé résiduelle.
+    throw new Error(describeHttpError(response.status, await response.text().catch(() => '')))
+  }
   return response.text()
 }
 

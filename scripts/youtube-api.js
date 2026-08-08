@@ -92,6 +92,24 @@ export function parseVideos(json){
   return videos
 }
 
+const KEY_PATTERN = /AIza[0-9A-Za-z_-]{35}/g
+
+/**
+ * Résume une erreur HTTP de l'API en reprenant le motif que Google place dans
+ * le corps de la réponse — keyInvalid, accessNotConfigured, quotaExceeded… —
+ * seul moyen de distinguer une clé refusée d'une API non activée.
+ *
+ * Toute chaîne ressemblant à une clé est masquée avant d'être journalisée : le
+ * message finit dans les logs publics du workflow.
+ */
+export function describeHttpError(status, body){
+  const text = String(body ?? '').replace(KEY_PATTERN, '[clé masquée]')
+  const reason = text.match(/"reason"\s*:\s*"([^"]+)"/)?.[1]
+  const message = text.match(/"message"\s*:\s*"([^"]+)"/)?.[1]
+  const details = [reason, message?.slice(0, 200)].filter(Boolean).join(' — ')
+  return `HTTP ${status}${details ? ` : ${details}` : ''}`
+}
+
 /** Construit une URL d'API en encodant chaque paramètre. */
 export function apiUrl(endpoint, params){
   const url = new URL(`${API_ROOT}/${endpoint}`)

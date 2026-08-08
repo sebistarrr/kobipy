@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { apiUrl, formatDuration, parseChannel, parsePlaylistItems, parseVideos } from '../scripts/youtube-api.js'
+import { apiUrl, describeHttpError, formatDuration, parseChannel, parsePlaylistItems, parseVideos } from '../scripts/youtube-api.js'
 
 test('convertit les durées ISO 8601', () => {
   assert.equal(formatDuration('PT9M48S'), '9:48')
@@ -109,4 +109,25 @@ test('encode les paramètres d’URL', () => {
   assert.match(url, /id=a%26b/)
   assert.match(url, /key=cl%C3%A9\+secr%C3%A8te/)
   assert.ok(!url.includes('pageToken'), 'les paramètres vides sont omis')
+})
+
+test('résume une erreur HTTP avec le motif renvoyé par Google', () => {
+  const body = JSON.stringify({ error: { code: 400, message: 'API key not valid. Please pass a valid API key.',
+    errors: [{ reason: 'API_KEY_INVALID' }] } })
+  const described = describeHttpError(400, body)
+  assert.match(described, /^HTTP 400 : API_KEY_INVALID/)
+  assert.match(described, /API key not valid/)
+})
+
+test('ne journalise jamais une clé présente dans le corps d’erreur', () => {
+  const body = '{"error":{"message":"clé AIzaSyA1234567890123456789012345678901234 refusée"}}'
+  const described = describeHttpError(400, body)
+  assert.ok(!/AIza/.test(described), 'la clé doit être masquée')
+  assert.match(described, /\[clé masquée\]/)
+})
+
+test('reste lisible si le corps est vide ou non JSON', () => {
+  assert.equal(describeHttpError(500, ''), 'HTTP 500')
+  assert.equal(describeHttpError(503, 'Service Unavailable'), 'HTTP 503')
+  assert.equal(describeHttpError(404, null), 'HTTP 404')
 })
