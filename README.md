@@ -37,7 +37,7 @@ La configuration Vite détecte automatiquement le nom du dépôt pendant le buil
 
 ## Mettre à jour le contenu
 
-- Thèmes, durées et textes soignés des vidéos : `CURATED` dans `src/videos.js`
+- Thèmes, durées et textes soignés des vidéos : `EDITORIAL` dans `src/videos.js`
 - FAQ et statistiques : `src/main.jsx`
 - Chaîne interrogée : `CHANNEL_HANDLE` dans `vite.config.js`
 - Couleurs et mise en page : `src/styles.css`
@@ -46,7 +46,7 @@ La configuration Vite détecte automatiquement le nom du dépôt pendant le buil
 - Origines externes autorisées (CSP) : `vite.config.js`
 
 Une nouvelle vidéo publiée sur la chaîne apparaît toute seule, sans toucher au
-code. Lui ajouter une entrée dans `CURATED` sert seulement à lui donner un
+code. Lui ajouter une entrée dans `EDITORIAL` sert seulement à lui donner un
 thème, une durée et des textes rédigés — voir la section suivante.
 
 ## Vidéothèque alimentée par la chaîne
@@ -69,21 +69,27 @@ sortants.
 |---|---|
 | Identifiant, titre, description, date de publication | flux YouTube |
 | Nombre de vues | flux YouTube quand il le fournit, sinon `CURATED` |
-| Thème et durée | `CURATED` uniquement — absents du flux |
+| Thème et durée | `EDITORIAL` uniquement — absents du flux |
 | Statistiques de la page d'accueil | saisies à la main dans `src/main.jsx` |
 
 Les titres et descriptions YouTube sont écrits pour l'algorithme (majuscules,
-hashtags, numéros d'épisode, chapitres). La version de `CURATED` prime donc
+hashtags, numéros d'épisode, chapitres). La version de `EDITORIAL` prime donc
 quand elle existe ; le flux prend le relais pour les vidéos non répertoriées,
 dont la description est réduite à sa première ligne utile. Une vidéo sans thème
 éditorial est rangée sous `DEFAULT_CATEGORY`, et son bandeau de durée est
 simplement omis.
 
+Chaque champ de `EDITORIAL` est facultatif. Une entrée réduite à `{ category }`
+range la vidéo sous un thème en laissant le flux fournir titre, description,
+vues et date — c'est le cas des vidéos dont les textes n'ont pas été retravaillés.
+Les entrées complètes alimentent en plus le catalogue de repli `CURATED`.
+
 ### Repli et fraîcheur
 
 Si la récupération échoue (réseau coupé, YouTube indisponible, format du flux
 modifié), le build **n'échoue pas** : un avertissement est affiché dans le log
-et le site sert `CURATED` tel quel.
+et le site sert `CURATED` tel quel — les entrées de `EDITORIAL` assez complètes
+pour tenir debout sans le flux.
 
 La donnée étant figée au build, une nouvelle vidéo n'apparaît qu'à la
 reconstruction suivante : le workflow tourne donc aussi une fois par jour

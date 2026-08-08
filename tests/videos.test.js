@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { CURATED, DEFAULT_CATEGORY, buildCatalogue, formatViews, summarize } from '../src/videos.js'
+import { CURATED, DEFAULT_CATEGORY, EDITORIAL, buildCatalogue, formatViews, summarize } from '../src/videos.js'
 
 const feedEntry = (overrides = {}) => ({
   id: 'K3jf5BFsPiw',
@@ -91,4 +91,29 @@ test('summarize tolère une description vide ou absente', () => {
   assert.equal(summarize(null), '')
   assert.equal(summarize(undefined), '')
   assert.equal(summarize('\n \n'), '')
+})
+
+test('toutes les clés éditoriales sont des identifiants YouTube valides', () => {
+  for(const id of Object.keys(EDITORIAL)){
+    assert.match(id, /^[A-Za-z0-9_-]{11}$/, `identifiant suspect : ${id}`)
+  }
+})
+
+test('le catalogue de repli n’a que des entrées complètes', () => {
+  for(const video of CURATED){
+    for(const champ of ['title', 'category', 'duration', 'views', 'date', 'description']){
+      assert.ok(video[champ], `${video.id} : ${champ} manquant`)
+    }
+  }
+})
+
+test('une entrée éditoriale réduite à un thème laisse le flux fournir le reste', () => {
+  const [video] = buildCatalogue([{
+    id: 'pwTAg2sgT0E', title: 'Pendule sonore', description: 'Une description.',
+    publishedAt: '2024-09-18T00:00:00+00:00', views: 1789
+  }])
+  assert.equal(video.category, 'Musique', 'le thème vient de EDITORIAL')
+  assert.equal(video.title, 'Pendule sonore', 'le titre vient du flux')
+  assert.equal(video.views, '1,8 k vues')
+  assert.equal(video.duration, null, 'le flux ne fournit pas de durée')
 })

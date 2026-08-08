@@ -8,7 +8,7 @@ import './styles.css'
 
 const CHANNEL_URL = 'https://www.youtube.com/@kobipy'
 const TIPEEE_URL = 'https://fr.tipeee.com/kobipy/'
-const CONTACT_EMAIL = 'kobipy@contact.fr'
+const CONTACT_EMAIL = 'contact@kobipy.fr'
 
 // La vidéothèque est construite au build à partir du flux Atom de la chaîne
 // (voir vite.config.js), enrichie des métadonnées éditoriales de videos.js. Si
